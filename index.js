@@ -16,6 +16,9 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 // Google Translate API setup
+// const translate = new Translate({
+//     keyFilename: 'path/to/your/google-cloud-key.json', // Replace with your Google Cloud key file
+// });
 const translate = new Translate({
     keyFilename: 'path/to/your/google-cloud-key.json', // Replace with your Google Cloud key file
 });
