@@ -16,9 +16,6 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 // Google Translate API setup
-// const translate = new Translate({
-//     keyFilename: 'path/to/your/google-cloud-key.json', // Replace with your Google Cloud key file
-// });
 const translate = new Translate({
     keyFilename: 'path/to/your/google-cloud-key.json', // Replace with your Google Cloud key file
 });
@@ -44,6 +41,8 @@ if (!fs.existsSync(TRANSLATED_FOLDER)) fs.mkdirSync(TRANSLATED_FOLDER);
 
 // In-memory storage for tracking file status
 const fileStatus = {};
+// const fileStatus = {};
+// const fileStatus = {};
 
 // Endpoint to upload a file
 app.post('/upload', upload.single('file'), (req, res) => {
