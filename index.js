@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const AdmZip = require('adm-zip');
-const { Translate } = require('@google-cloud/translate').v2;
 const mammoth = require('mammoth');
 const { PDFDocument } = require('pdf-lib');
 const { createBullBoard } = require('@bull-board/api');
@@ -11,18 +10,25 @@ const Queue = require('bull');
 const redis = require('redis');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Google Translate API setup
-const translate = new Translate({
-    keyFilename: 'path/to/your/google-cloud-key.json', // Replace with your Google Cloud key file
-});
+// LibreTranslate API setup
+const LIBRETRANSLATE_URL = 'http://localhost:5000'; // Replace with your LibreTranslate server URL
 
 // Redis and Bull setup
 const redisClient = redis.createClient();
-const fileQueue = new Queue('fileQueue', 'redis://127.0.0.1:6379');
+// const fileQueue = new Queue('fileQueue', 'redis://127.0.0.1:6379');
+
+const fileQueue = new Queue('fileQueue', {
+    redis: {
+      host: '127.0.0.1',
+      port: 6379,
+      maxRetriesPerRequest: null, // Disable retry limit
+    },
+  });
 
 // Bull Board setup for monitoring queues
 const serverAdapter = new ExpressAdapter();
@@ -41,8 +47,6 @@ if (!fs.existsSync(TRANSLATED_FOLDER)) fs.mkdirSync(TRANSLATED_FOLDER);
 
 // In-memory storage for tracking file status
 const fileStatus = {};
-// const fileStatus = {};
-// const fileStatus = {};
 
 // Endpoint to upload a file
 app.post('/upload', upload.single('file'), (req, res) => {
@@ -109,6 +113,16 @@ fileQueue.process(async (job) => {
     }
 });
 
+// Function to translate text using LibreTranslate
+async function translateText(text, targetLanguage) {
+    const response = await axios.post(`${LIBRETRANSLATE_URL}/translate`, {
+        q: text,
+        source: 'auto',
+        target: targetLanguage,
+    });
+    return response.data.translatedText;
+}
+
 // Function to process a single file
 async function processSingleFile(filePath, targetLanguage) {
     const fileExtension = path.extname(filePath).toLowerCase();
@@ -129,11 +143,11 @@ async function processSingleFile(filePath, targetLanguage) {
     }
 
     // Translate the content
-    const [translation] = await translate.translate(content, targetLanguage);
+    const translatedContent = await translateText(content, targetLanguage);
 
     // Save the translated content to a new file
     const translatedFilePath = path.join(TRANSLATED_FOLDER, `${path.basename(filePath, fileExtension)}_translated${fileExtension}`);
-    fs.writeFileSync(translatedFilePath, translation);
+    fs.writeFileSync(translatedFilePath, translatedContent);
 
     return translatedFilePath;
 }
@@ -164,11 +178,11 @@ async function processZip(zipPath, targetLanguage) {
             }
 
             // Translate the content
-            const [translation] = await translate.translate(content, targetLanguage);
+            const translatedContent = await translateText(content, targetLanguage);
 
             // Save the translated content to a new file
             const translatedFilePath = path.join(TRANSLATED_FOLDER, `${path.basename(entry.entryName, fileExtension)}_translated${fileExtension}`);
-            fs.writeFileSync(translatedFilePath, translation);
+            fs.writeFileSync(translatedFilePath, translatedContent);
             translatedFiles.push(translatedFilePath);
         }
     }
@@ -186,4 +200,12 @@ async function processZip(zipPath, targetLanguage) {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+});
+
+redisClient.on('connect', () => {
+    console.log('Connected to Redis');
+});
+
+redisClient.on('error', (err) => {
+    console.error('Redis error:', err);
 });
