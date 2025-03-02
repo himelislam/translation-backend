@@ -16,7 +16,7 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 // LibreTranslate API setup
-const LIBRETRANSLATE_URL = 'http://localhost:5000'; // Replace with your LibreTranslate server URL
+const LIBRETRANSLATE_URL = 'http://localhost:5001'; // Replace with your LibreTranslate server URL
 
 // Redis and Bull setup
 const redisClient = redis.createClient();
@@ -24,11 +24,11 @@ const redisClient = redis.createClient();
 
 const fileQueue = new Queue('fileQueue', {
     redis: {
-      host: '127.0.0.1',
-      port: 6379,
-      maxRetriesPerRequest: null, // Disable retry limit
+        host: '127.0.0.1',
+        port: 6379,
+        maxRetriesPerRequest: null, // Disable retry limit
     },
-  });
+});
 
 // Bull Board setup for monitoring queues
 const serverAdapter = new ExpressAdapter();
@@ -52,16 +52,25 @@ const fileStatus = {};
 app.post('/upload', upload.single('file'), (req, res) => {
     const file = req.file;
     const targetLanguage = req.body.language || 'en'; // Default to English
+    console.log(file, "file", targetLanguage, "targetLanguage");
 
     if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Validate file type
+    if (file.originalname.endsWith('.zip') && file.mimetype !== 'application/zip') {
+        return res.status(400).json({ error: 'Invalid file type. Expected a ZIP file.' });
+    }
+
     const fileId = Date.now().toString(); // Generate a unique file ID
     fileStatus[fileId] = { status: 'processing' };
 
+    // Log file details
+    console.log(`Uploaded file: ${file.originalname}, size: ${file.size} bytes, type: ${file.mimetype}`);
+
     // Add the file processing task to the queue
-    fileQueue.add({ fileId, filePath: file.path, targetLanguage });
+    fileQueue.add({ fileId, filePath: file.path, targetLanguage, originalname: file.originalname });
 
     res.json({ fileId, status: 'processing' });
 });
@@ -91,14 +100,14 @@ app.get('/download/:fileId', (req, res) => {
 
 // Process files in the background
 fileQueue.process(async (job) => {
-    const { fileId, filePath, targetLanguage } = job.data;
+    const { fileId, filePath, targetLanguage, originalname } = job.data;
 
     try {
         let translatedFilePath;
-        if (filePath.endsWith('.zip')) {
+        if (originalname.endsWith('.zip')) {
             translatedFilePath = await processZip(filePath, targetLanguage);
         } else {
-            translatedFilePath = await processSingleFile(filePath, targetLanguage);
+            translatedFilePath = await processSingleFile(filePath, targetLanguage, originalname);
         }
 
         fileStatus[fileId] = {
@@ -106,26 +115,36 @@ fileQueue.process(async (job) => {
             translatedFile: translatedFilePath,
         };
     } catch (error) {
+        console.error(`Error processing file ${fileId}:`, error);
         fileStatus[fileId] = {
             status: 'failed',
             error: error.message,
         };
+    } finally {
+        // Clean up the uploaded file
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
     }
 });
 
-// Function to translate text using LibreTranslate
 async function translateText(text, targetLanguage) {
-    const response = await axios.post(`${LIBRETRANSLATE_URL}/translate`, {
-        q: text,
-        source: 'auto',
-        target: targetLanguage,
-    });
-    return response.data.translatedText;
+    try {
+        const response = await axios.post(`${LIBRETRANSLATE_URL}/translate`, {
+            q: text,
+            source: 'auto',
+            target: targetLanguage,
+        });
+        return response.data.translatedText;
+    } catch (error) {
+        console.error('Translation failed:', error.message);
+        throw new Error('Translation service unavailable');
+    }
 }
 
 // Function to process a single file
-async function processSingleFile(filePath, targetLanguage) {
-    const fileExtension = path.extname(filePath).toLowerCase();
+async function processSingleFile(filePath, targetLanguage, originalname) {
+    const fileExtension = path.extname(originalname).toLowerCase()
     let content;
 
     if (fileExtension === '.txt') {
@@ -146,7 +165,7 @@ async function processSingleFile(filePath, targetLanguage) {
     const translatedContent = await translateText(content, targetLanguage);
 
     // Save the translated content to a new file
-    const translatedFilePath = path.join(TRANSLATED_FOLDER, `${path.basename(filePath, fileExtension)}_translated${fileExtension}`);
+    const translatedFilePath = path.join(TRANSLATED_FOLDER, `${path.basename(originalname, fileExtension)}_translated${fileExtension}`);
     fs.writeFileSync(translatedFilePath, translatedContent);
 
     return translatedFilePath;
@@ -155,6 +174,13 @@ async function processSingleFile(filePath, targetLanguage) {
 // Function to process a ZIP file
 async function processZip(zipPath, targetLanguage) {
     const zip = new AdmZip(zipPath);
+
+    // Check if the ZIP file is valid
+    if (!zip.getEntries() || zip.getEntries().length === 0) {
+        throw new Error('Invalid or empty ZIP file');
+    }
+
+
     const zipEntries = zip.getEntries();
     const translatedFiles = [];
 
