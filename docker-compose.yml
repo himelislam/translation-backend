@@ -3,7 +3,7 @@ services:
     image: libretranslate/libretranslate
     container_name: libretranslate
     ports:
-      - "5001:5000"  # Change the host port to 5001
+      - "5001:5000"
     environment:
       - LT_DISABLE_API_KEY=true
       - LT_DISABLE_RATE_LIMIT=true
