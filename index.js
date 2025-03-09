@@ -54,6 +54,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
     const targetLanguage = req.body.language || 'en'; // Default to English
     console.log(file, "file", targetLanguage, "targetLanguage");
 
+    // Check if a file was uploaded
     if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -63,6 +64,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
         return res.status(400).json({ error: 'Invalid file type. Expected a ZIP file.' });
     }
 
+    // Generate a unique file ID
     const fileId = Date.now().toString(); // Generate a unique file ID
     fileStatus[fileId] = { status: 'processing' };
 
@@ -109,7 +111,7 @@ fileQueue.process(async (job) => {
         } else {
             translatedFilePath = await processSingleFile(filePath, targetLanguage, originalname);
         }
-
+        // Update the file status
         fileStatus[fileId] = {
             status: 'completed',
             translatedFile: translatedFilePath,
@@ -128,6 +130,7 @@ fileQueue.process(async (job) => {
     }
 });
 
+// Function to translate text using LibreTranslate
 async function translateText(text, targetLanguage) {
     try {
         const response = await axios.post(`${LIBRETRANSLATE_URL}/translate`, {
