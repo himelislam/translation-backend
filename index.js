@@ -11,8 +11,11 @@ const redis = require('redis');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const cors = require("cors");
 
 const app = express();
+
+
 const upload = multer({ dest: 'uploads/' });
 
 // LibreTranslate API setup
@@ -37,6 +40,7 @@ createBullBoard({
     serverAdapter: serverAdapter,
 });
 serverAdapter.setBasePath('/admin/queues');
+app.use(cors());
 app.use('/admin/queues', serverAdapter.getRouter());
 
 // Temporary folders
@@ -226,9 +230,13 @@ async function processZip(zipPath, targetLanguage) {
 }
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+});
+
+app.get('/', (req, res) => {
+    res.send('Server is running');
 });
 
 redisClient.on('connect', () => {
