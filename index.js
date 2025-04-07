@@ -62,6 +62,8 @@ createBullBoard({
     serverAdapter: serverAdapter,
 });
 serverAdapter.setBasePath('/admin/queues');
+
+// needs to add the frontend enpoint later
 app.use(cors());
 app.use('/admin/queues', serverAdapter.getRouter());
 
