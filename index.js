@@ -32,10 +32,12 @@ const upload = multer({
 });
 
 // LibreTranslate API setup
-const LIBRETRANSLATE_URL = 'http://localhost:5001'; // Replace with your LibreTranslate server URL
+const LIBRETRANSLATE_URL = process.env.LIBRETRANSLATE_URL || 'http://localhost:5001';
 
 // Redis and Bull setup
-const redisClient = redis.createClient();
+const redisClient = redis.createClient({
+    url: `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`
+});
 // Connect to Redis
 (async () => {
     try {
@@ -49,8 +51,8 @@ const redisClient = redis.createClient();
 // File processing queue
 const fileQueue = new Queue('fileQueue', {
     redis: {
-        host: '127.0.0.1',
-        port: 6379,
+        host: process.env.REDIS_HOST || '127.0.0.1',
+        port: parseInt(process.env.REDIS_PORT) || 6379,
         maxRetriesPerRequest: null, // Disable retry limit
     },
 });

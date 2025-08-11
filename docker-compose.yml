@@ -1,4 +1,13 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: translation-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
   libretranslate:
     image: libretranslate/libretranslate
     container_name: libretranslate
@@ -9,3 +18,26 @@ services:
       - LT_DISABLE_RATE_LIMIT=true
       - LT_DISABLE_ORIGIN_CHECK=true
     restart: unless-stopped
+
+  translation-backend:
+    build: .
+    container_name: translation-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LIBRETRANSLATE_URL=http://libretranslate:5000
+      - PORT=3001
+    volumes:
+      - ./uploads:/app/uploads
+      - ./translated:/app/translated
+      - ./temp:/app/temp
+    depends_on:
+      - redis
+      - libretranslate
+    restart: unless-stopped
+
+volumes:
+  redis_data:
